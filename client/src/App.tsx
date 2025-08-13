@@ -1,31 +1,35 @@
-import { Switch, Route } from "wouter";
-import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/not-found";
-import Home from "@/pages/home";
-import PackageDetails from "@/pages/package-details";
-import Booking from "@/pages/booking";
+import HomePage from "./pages/HomePage";
+import RoomsPage from "./pages/RoomsPage";
+import RoomDetailsPage from "./pages/RoomDetailsPage";
+import BookingPage from "./pages/BookingPage";
+import BookingsPage from "./pages/BookingsPage";
+import AnalyticsPage from "./pages/AnalyticsPage";
+import Navigation from "./components/Navigation";
 
-function Router() {
-  return (
-    <Switch>
-      <Route path="/" component={Home} />
-      <Route path="/package/:id" component={PackageDetails} />
-      <Route path="/booking/:packageId" component={Booking} />
-      <Route component={NotFound} />
-    </Switch>
-  );
-}
+const queryClient = new QueryClient();
 
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Router />
-      </TooltipProvider>
+      <Router>
+        <div className="min-h-screen bg-gray-50">
+          <main className="pb-16">
+            <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/rooms" element={<RoomsPage />} />
+              <Route path="/rooms/:id" element={<RoomDetailsPage />} />
+              <Route path="/book/:roomId" element={<BookingPage />} />
+              <Route path="/bookings" element={<BookingsPage />} />
+              <Route path="/analytics" element={<AnalyticsPage />} />
+            </Routes>
+          </main>
+          <Navigation />
+        </div>
+      </Router>
+      <Toaster />
     </QueryClientProvider>
   );
 }

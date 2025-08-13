@@ -1,364 +1,391 @@
-import { type Destination, type InsertDestination, type Package, type InsertPackage, type Activity, type InsertActivity, type Booking, type InsertBooking, type Contact, type InsertContact } from "@shared/schema";
-import { randomUUID } from "crypto";
+import { 
+  conferenceRooms, bookings, bookingEquipment, users,
+  type ConferenceRoom, type Booking, type BookingEquipment, type User,
+  type InsertConferenceRoom, type InsertBooking, type InsertBookingEquipment, type InsertUser,
+  type BookingWithDetails, type RoomWithBookings, type RoomUsageStats, type BookingTrends, type PopularTimeSlots
+} from "@shared/schema";
+import { db } from "./db";
+import { eq, and, gte, lte, sql, desc, asc } from "drizzle-orm";
 
 export interface IStorage {
-  // Destinations
-  getDestinations(): Promise<Destination[]>;
-  getDestination(id: string): Promise<Destination | undefined>;
-  createDestination(destination: InsertDestination): Promise<Destination>;
-
-  // Packages
-  getPackages(filters?: { priceMin?: number; priceMax?: number; duration?: string; type?: string; destinationId?: string }): Promise<Package[]>;
-  getPackage(id: string): Promise<Package | undefined>;
-  createPackage(packageData: InsertPackage): Promise<Package>;
-  searchPackages(query: string): Promise<Package[]>;
-
-  // Activities
-  getActivities(): Promise<Activity[]>;
-  getActivity(id: string): Promise<Activity | undefined>;
-  createActivity(activity: InsertActivity): Promise<Activity>;
-
+  // Conference Rooms
+  getConferenceRooms(): Promise<ConferenceRoom[]>;
+  getActiveConferenceRooms(): Promise<ConferenceRoom[]>;
+  getConferenceRoom(id: number): Promise<ConferenceRoom | null>;
+  createConferenceRoom(room: InsertConferenceRoom): Promise<ConferenceRoom>;
+  updateConferenceRoom(id: number, room: Partial<InsertConferenceRoom>): Promise<ConferenceRoom | null>;
+  
   // Bookings
+  getBookings(): Promise<BookingWithDetails[]>;
+  getBookingsByRoom(roomId: number): Promise<Booking[]>;
+  getBookingsByDateRange(startDate: string, endDate: string): Promise<BookingWithDetails[]>;
+  getBooking(id: number): Promise<BookingWithDetails | null>;
   createBooking(booking: InsertBooking): Promise<Booking>;
-  getBookings(): Promise<Booking[]>;
-  getBooking(id: string): Promise<Booking | undefined>;
-
-  // Contacts
-  createContact(contact: InsertContact): Promise<Contact>;
-  getContacts(): Promise<Contact[]>;
+  updateBooking(id: number, booking: Partial<InsertBooking>): Promise<Booking | null>;
+  cancelBooking(id: number): Promise<Booking | null>;
+  checkRoomAvailability(roomId: number, startDate: string, endDate: string, startTime: string, endTime: string, excludeBookingId?: number): Promise<boolean>;
+  
+  // Analytics
+  getRoomUsageStats(startDate?: string, endDate?: string): Promise<RoomUsageStats[]>;
+  getBookingTrends(startDate: string, endDate: string): Promise<BookingTrends[]>;
+  getPopularTimeSlots(): Promise<PopularTimeSlots[]>;
+  getTotalRevenue(startDate?: string, endDate?: string): Promise<number>;
+  getOccupancyRate(roomId?: number, startDate?: string, endDate?: string): Promise<number>;
+  
+  // Users (for future authentication)
+  getUser(id: number): Promise<User | null>;
+  getUserByEmail(email: string): Promise<User | null>;
+  createUser(user: InsertUser): Promise<User>;
 }
 
-export class MemStorage implements IStorage {
-  private destinations: Map<string, Destination>;
-  private packages: Map<string, Package>;
-  private activities: Map<string, Activity>;
-  private bookings: Map<string, Booking>;
-  private contacts: Map<string, Contact>;
-
-  constructor() {
-    this.destinations = new Map();
-    this.packages = new Map();
-    this.activities = new Map();
-    this.bookings = new Map();
-    this.contacts = new Map();
-    this.seedData();
+export class DatabaseStorage implements IStorage {
+  async getConferenceRooms(): Promise<ConferenceRoom[]> {
+    return await db.select().from(conferenceRooms).orderBy(asc(conferenceRooms.name));
   }
 
-  private seedData() {
-    // Seed destinations
-    const destinationsData: InsertDestination[] = [
-      {
-        name: "Santorini, Greece",
-        country: "Greece",
-        description: "Stunning white-washed buildings and blue domes overlooking the Aegean Sea",
-        imageUrl: "https://images.unsplash.com/photo-1613395877344-13d4a8e0d49e?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&h=600",
-        packageCount: 12,
-        priceFrom: 129900,
-        featured: 1
-      },
-      {
-        name: "Maldives",
-        country: "Maldives",
-        description: "Tropical paradise with overwater bungalows and crystal clear lagoons",
-        imageUrl: "https://images.unsplash.com/photo-1540202404-d0c7fe46a087?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&h=600",
-        packageCount: 8,
-        priceFrom: 259900,
-        featured: 1
-      },
-      {
-        name: "Bali, Indonesia",
-        country: "Indonesia",
-        description: "Rice terraces and tropical landscapes with lush greenery",
-        imageUrl: "https://images.unsplash.com/photo-1537953773345-d172ccf13cf1?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&h=600",
-        packageCount: 15,
-        priceFrom: 89900,
-        featured: 1
-      },
-      {
-        name: "Swiss Alps",
-        country: "Switzerland",
-        description: "Snow-capped peaks and alpine lakes with breathtaking mountain scenery",
-        imageUrl: "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&h=600",
-        packageCount: 10,
-        priceFrom: 159900,
-        featured: 1
-      },
-      {
-        name: "Tokyo, Japan",
-        country: "Japan",
-        description: "Modern cityscape with traditional elements and vibrant culture",
-        imageUrl: "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&h=600",
-        packageCount: 18,
-        priceFrom: 119900,
-        featured: 1
-      },
-      {
-        name: "Iceland",
-        country: "Iceland",
-        description: "Northern Lights and dramatic landscapes with geysers and waterfalls",
-        imageUrl: "https://images.unsplash.com/photo-1483347756197-71ef80e95f73?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&h=600",
-        packageCount: 7,
-        priceFrom: 179900,
-        featured: 1
-      }
-    ];
-
-    destinationsData.forEach(dest => {
-      const destination: Destination = { ...dest, id: randomUUID() };
-      this.destinations.set(destination.id, destination);
-    });
-
-    // Seed packages
-    const packagesData: Omit<InsertPackage, 'destinationId'>[] = [
-      {
-        title: "Maldives Paradise Escape",
-        description: "7 days in an overwater villa with private beach access, spa treatments, and gourmet dining experiences.",
-        imageUrl: "https://images.unsplash.com/photo-1571003123894-1f0594d2b5d9?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=400",
-        price: 259900,
-        duration: 7,
-        maxGuests: 4,
-        rating: "4.9",
-        type: "Beach & Resort",
-        features: ["5-star resort", "All-inclusive", "Spa included"],
-        included: ["Overwater villa", "All meals", "Spa treatments", "Airport transfers"],
-        activities: ["Snorkeling", "Sunset cruise", "Spa treatments", "Beach activities"]
-      },
-      {
-        title: "Swiss Alps Adventure",
-        description: "10 days of hiking, skiing, and mountain adventures with cozy chalet accommodations and local cuisine.",
-        imageUrl: "https://pixabay.com/get/g056172b517d33478a5fdd350557b8dda7036ff34ea3fa4121937ff3ca34eb1587f0c9edafd81105c8deec56bae2c9bb9a4a240578c4410284a90eb60b0e465f1_1280.jpg",
-        price: 189900,
-        duration: 10,
-        maxGuests: 8,
-        rating: "4.8",
-        type: "Adventure",
-        features: ["Mountain lodge", "Guided tours", "Equipment included"],
-        included: ["Chalet accommodation", "Breakfast & dinner", "Ski equipment", "Mountain guides"],
-        activities: ["Skiing", "Hiking", "Mountain climbing", "Photography tours"]
-      },
-      {
-        title: "Japan Cultural Journey",
-        description: "12 days exploring ancient temples, traditional ryokans, tea ceremonies, and authentic Japanese experiences.",
-        imageUrl: "https://images.unsplash.com/photo-1528164344705-47542687000d?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=400",
-        price: 219900,
-        duration: 12,
-        maxGuests: 6,
-        rating: "4.9",
-        type: "Cultural",
-        features: ["Traditional ryokan", "Cultural guide", "Authentic meals"],
-        included: ["Ryokan stays", "Traditional meals", "Temple visits", "Cultural activities"],
-        activities: ["Tea ceremony", "Temple visits", "Sake tasting", "Traditional arts"]
-      },
-      {
-        title: "Santorini Luxury Getaway",
-        description: "5 days in a cliffside villa with infinity pool, wine tastings, and sunset sailing experiences.",
-        imageUrl: "https://images.unsplash.com/photo-1570077188670-e3a8d69ac5ff?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=400",
-        price: 149900,
-        duration: 5,
-        maxGuests: 2,
-        rating: "4.9",
-        type: "Luxury",
-        features: ["Cliffside villa", "Infinity pool", "Wine tastings"],
-        included: ["Luxury villa", "Private transfers", "Wine tours", "Sunset cruise"],
-        activities: ["Wine tasting", "Sunset sailing", "Photography", "Local tours"]
-      },
-      {
-        title: "Bali Wellness Retreat",
-        description: "8 days of yoga, meditation, spa treatments in tropical paradise with organic cuisine.",
-        imageUrl: "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=400",
-        price: 129900,
-        duration: 8,
-        maxGuests: 6,
-        rating: "4.8",
-        type: "Luxury",
-        features: ["Wellness resort", "Spa treatments", "Yoga classes"],
-        included: ["Resort accommodation", "All meals", "Spa treatments", "Yoga sessions"],
-        activities: ["Yoga", "Meditation", "Spa treatments", "Cultural tours"]
-      },
-      {
-        title: "Iceland Northern Lights",
-        description: "6 days chasing the Aurora Borealis with glacier tours, hot springs, and dramatic landscapes.",
-        imageUrl: "https://images.unsplash.com/photo-1483347756197-71ef80e95f73?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=400",
-        price: 199900,
-        duration: 6,
-        maxGuests: 4,
-        rating: "4.7",
-        type: "Adventure",
-        features: ["Northern lights tours", "Glacier walks", "Hot springs"],
-        included: ["Hotel accommodation", "All tours", "Winter gear", "Expert guides"],
-        activities: ["Northern lights viewing", "Glacier walking", "Hot springs", "Photography"]
-      }
-    ];
-
-    const destinationIds = Array.from(this.destinations.keys());
-    packagesData.forEach((pkg, index) => {
-      const destinationId = destinationIds[index % destinationIds.length];
-      const packageData: Package = {
-        ...pkg,
-        id: randomUUID(),
-        destinationId
-      };
-      this.packages.set(packageData.id, packageData);
-    });
-
-    // Seed activities
-    const activitiesData: InsertActivity[] = [
-      {
-        name: "Scuba Diving",
-        description: "Explore underwater worlds with colorful coral reefs and marine life",
-        imageUrl: "https://images.unsplash.com/photo-1544551763-46a013bb70d5?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=300",
-        category: "Water Sports"
-      },
-      {
-        name: "Mountain Hiking",
-        description: "Conquer scenic peaks and enjoy breathtaking alpine views",
-        imageUrl: "https://images.unsplash.com/photo-1551632811-561732d1e306?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=300",
-        category: "Adventure"
-      },
-      {
-        name: "Wildlife Safari",
-        description: "Meet incredible animals in their natural habitat",
-        imageUrl: "https://images.unsplash.com/photo-1516426122078-c23e76319801?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=300",
-        category: "Wildlife"
-      },
-      {
-        name: "Food Tours",
-        description: "Taste authentic local flavors and culinary traditions",
-        imageUrl: "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=300",
-        category: "Cultural"
-      }
-    ];
-
-    activitiesData.forEach(activity => {
-      const activityData: Activity = { ...activity, id: randomUUID() };
-      this.activities.set(activityData.id, activityData);
-    });
+  async getActiveConferenceRooms(): Promise<ConferenceRoom[]> {
+    return await db.select()
+      .from(conferenceRooms)
+      .where(eq(conferenceRooms.isActive, true))
+      .orderBy(asc(conferenceRooms.name));
   }
 
-  async getDestinations(): Promise<Destination[]> {
-    return Array.from(this.destinations.values());
+  async getConferenceRoom(id: number): Promise<ConferenceRoom | null> {
+    const [room] = await db.select()
+      .from(conferenceRooms)
+      .where(eq(conferenceRooms.id, id));
+    return room || null;
   }
 
-  async getDestination(id: string): Promise<Destination | undefined> {
-    return this.destinations.get(id);
+  async createConferenceRoom(room: InsertConferenceRoom): Promise<ConferenceRoom> {
+    const [newRoom] = await db.insert(conferenceRooms)
+      .values(room)
+      .returning();
+    return newRoom;
   }
 
-  async createDestination(destination: InsertDestination): Promise<Destination> {
-    const id = randomUUID();
-    const newDestination: Destination = { ...destination, id };
-    this.destinations.set(id, newDestination);
-    return newDestination;
+  async updateConferenceRoom(id: number, room: Partial<InsertConferenceRoom>): Promise<ConferenceRoom | null> {
+    const [updatedRoom] = await db.update(conferenceRooms)
+      .set(room)
+      .where(eq(conferenceRooms.id, id))
+      .returning();
+    return updatedRoom || null;
   }
 
-  async getPackages(filters?: { priceMin?: number; priceMax?: number; duration?: string; type?: string; destinationId?: string }): Promise<Package[]> {
-    let packages = Array.from(this.packages.values());
+  async getBookings(): Promise<BookingWithDetails[]> {
+    const result = await db.select()
+      .from(bookings)
+      .leftJoin(conferenceRooms, eq(bookings.roomId, conferenceRooms.id))
+      .leftJoin(bookingEquipment, eq(bookings.id, bookingEquipment.bookingId))
+      .orderBy(desc(bookings.createdAt));
 
-    if (filters) {
-      if (filters.priceMin) {
-        packages = packages.filter(pkg => pkg.price >= filters.priceMin!);
+    // Group by booking and collect equipment
+    const bookingsMap = new Map<number, BookingWithDetails>();
+    
+    for (const row of result) {
+      if (!row.bookings || !row.conference_rooms) continue;
+      
+      const bookingId = row.bookings.id;
+      if (!bookingsMap.has(bookingId)) {
+        bookingsMap.set(bookingId, {
+          ...row.bookings,
+          room: row.conference_rooms,
+          equipment: []
+        });
       }
-      if (filters.priceMax) {
-        packages = packages.filter(pkg => pkg.price <= filters.priceMax!);
-      }
-      if (filters.type) {
-        packages = packages.filter(pkg => pkg.type === filters.type);
-      }
-      if (filters.destinationId) {
-        packages = packages.filter(pkg => pkg.destinationId === filters.destinationId);
-      }
-      if (filters.duration) {
-        if (filters.duration === "1-3 days") {
-          packages = packages.filter(pkg => pkg.duration >= 1 && pkg.duration <= 3);
-        } else if (filters.duration === "4-7 days") {
-          packages = packages.filter(pkg => pkg.duration >= 4 && pkg.duration <= 7);
-        } else if (filters.duration === "1-2 weeks") {
-          packages = packages.filter(pkg => pkg.duration >= 8 && pkg.duration <= 14);
-        } else if (filters.duration === "2+ weeks") {
-          packages = packages.filter(pkg => pkg.duration > 14);
-        }
+      
+      if (row.booking_equipment) {
+        bookingsMap.get(bookingId)!.equipment.push(row.booking_equipment);
       }
     }
-
-    return packages;
+    
+    return Array.from(bookingsMap.values());
   }
 
-  async getPackage(id: string): Promise<Package | undefined> {
-    return this.packages.get(id);
+  async getBookingsByRoom(roomId: number): Promise<Booking[]> {
+    return await db.select()
+      .from(bookings)
+      .where(eq(bookings.roomId, roomId))
+      .orderBy(desc(bookings.startDate), desc(bookings.startTime));
   }
 
-  async createPackage(packageData: InsertPackage): Promise<Package> {
-    const id = randomUUID();
-    const newPackage: Package = { ...packageData, id };
-    this.packages.set(id, newPackage);
-    return newPackage;
+  async getBookingsByDateRange(startDate: string, endDate: string): Promise<BookingWithDetails[]> {
+    const result = await db.select()
+      .from(bookings)
+      .leftJoin(conferenceRooms, eq(bookings.roomId, conferenceRooms.id))
+      .leftJoin(bookingEquipment, eq(bookings.id, bookingEquipment.bookingId))
+      .where(
+        and(
+          gte(bookings.startDate, startDate),
+          lte(bookings.endDate, endDate)
+        )
+      )
+      .orderBy(asc(bookings.startDate), asc(bookings.startTime));
+
+    // Group by booking and collect equipment
+    const bookingsMap = new Map<number, BookingWithDetails>();
+    
+    for (const row of result) {
+      if (!row.bookings || !row.conference_rooms) continue;
+      
+      const bookingId = row.bookings.id;
+      if (!bookingsMap.has(bookingId)) {
+        bookingsMap.set(bookingId, {
+          ...row.bookings,
+          room: row.conference_rooms,
+          equipment: []
+        });
+      }
+      
+      if (row.booking_equipment) {
+        bookingsMap.get(bookingId)!.equipment.push(row.booking_equipment);
+      }
+    }
+    
+    return Array.from(bookingsMap.values());
   }
 
-  async searchPackages(query: string): Promise<Package[]> {
-    const packages = Array.from(this.packages.values());
-    const destinations = Array.from(this.destinations.values());
-    const lowercaseQuery = query.toLowerCase();
+  async getBooking(id: number): Promise<BookingWithDetails | null> {
+    const result = await db.select()
+      .from(bookings)
+      .leftJoin(conferenceRooms, eq(bookings.roomId, conferenceRooms.id))
+      .leftJoin(bookingEquipment, eq(bookings.id, bookingEquipment.bookingId))
+      .where(eq(bookings.id, id));
 
-    return packages.filter(pkg => {
-      const destination = destinations.find(d => d.id === pkg.destinationId);
-      return (
-        pkg.title.toLowerCase().includes(lowercaseQuery) ||
-        pkg.description.toLowerCase().includes(lowercaseQuery) ||
-        pkg.type.toLowerCase().includes(lowercaseQuery) ||
-        (destination && destination.name.toLowerCase().includes(lowercaseQuery)) ||
-        (destination && destination.country.toLowerCase().includes(lowercaseQuery))
-      );
-    });
-  }
+    if (result.length === 0 || !result[0].bookings || !result[0].conference_rooms) {
+      return null;
+    }
 
-  async getActivities(): Promise<Activity[]> {
-    return Array.from(this.activities.values());
-  }
+    const booking: BookingWithDetails = {
+      ...result[0].bookings,
+      room: result[0].conference_rooms,
+      equipment: result.filter(r => r.booking_equipment).map(r => r.booking_equipment!)
+    };
 
-  async getActivity(id: string): Promise<Activity | undefined> {
-    return this.activities.get(id);
-  }
-
-  async createActivity(activity: InsertActivity): Promise<Activity> {
-    const id = randomUUID();
-    const newActivity: Activity = { ...activity, id };
-    this.activities.set(id, newActivity);
-    return newActivity;
+    return booking;
   }
 
   async createBooking(booking: InsertBooking): Promise<Booking> {
-    const id = randomUUID();
-    const newBooking: Booking = {
-      ...booking,
-      id,
-      status: "pending",
-      createdAt: new Date()
-    };
-    this.bookings.set(id, newBooking);
+    const [newBooking] = await db.insert(bookings)
+      .values(booking)
+      .returning();
     return newBooking;
   }
 
-  async getBookings(): Promise<Booking[]> {
-    return Array.from(this.bookings.values());
+  async updateBooking(id: number, booking: Partial<InsertBooking>): Promise<Booking | null> {
+    const [updatedBooking] = await db.update(bookings)
+      .set({ ...booking, updatedAt: new Date() })
+      .where(eq(bookings.id, id))
+      .returning();
+    return updatedBooking || null;
   }
 
-  async getBooking(id: string): Promise<Booking | undefined> {
-    return this.bookings.get(id);
+  async cancelBooking(id: number): Promise<Booking | null> {
+    const [cancelledBooking] = await db.update(bookings)
+      .set({ status: "cancelled", updatedAt: new Date() })
+      .where(eq(bookings.id, id))
+      .returning();
+    return cancelledBooking || null;
   }
 
-  async createContact(contact: InsertContact): Promise<Contact> {
-    const id = randomUUID();
-    const newContact: Contact = {
-      ...contact,
-      id,
-      createdAt: new Date()
-    };
-    this.contacts.set(id, newContact);
-    return newContact;
+  async checkRoomAvailability(
+    roomId: number, 
+    startDate: string, 
+    endDate: string, 
+    startTime: string, 
+    endTime: string,
+    excludeBookingId?: number
+  ): Promise<boolean> {
+    const conflicts = await db.select()
+      .from(bookings)
+      .where(
+        and(
+          eq(bookings.roomId, roomId),
+          eq(bookings.status, "confirmed"),
+          excludeBookingId ? sql`${bookings.id} != ${excludeBookingId}` : sql`1=1`,
+          // Check for date overlap and time overlap
+          sql`
+            (${bookings.startDate} <= ${endDate} AND ${bookings.endDate} >= ${startDate}) AND
+            (${bookings.startTime} < ${endTime} AND ${bookings.endTime} > ${startTime})
+          `
+        )
+      );
+
+    return conflicts.length === 0;
   }
 
-  async getContacts(): Promise<Contact[]> {
-    return Array.from(this.contacts.values());
+  async getRoomUsageStats(startDate?: string, endDate?: string): Promise<RoomUsageStats[]> {
+    let dateFilter = sql`1=1`;
+    if (startDate && endDate) {
+      dateFilter = and(
+        gte(bookings.startDate, startDate),
+        lte(bookings.endDate, endDate)
+      );
+    }
+
+    const stats = await db.select({
+      roomId: conferenceRooms.id,
+      roomName: conferenceRooms.name,
+      capacity: conferenceRooms.capacity,
+      totalBookings: sql<number>`COUNT(${bookings.id})::int`,
+      totalHours: sql<number>`
+        COALESCE(SUM(
+          EXTRACT(EPOCH FROM (
+            TO_TIMESTAMP(${bookings.endDate} || ' ' || ${bookings.endTime}, 'YYYY-MM-DD HH24:MI') -
+            TO_TIMESTAMP(${bookings.startDate} || ' ' || ${bookings.startTime}, 'YYYY-MM-DD HH24:MI')
+          )) / 3600
+        ), 0)::int
+      `,
+      totalRevenue: sql<number>`COALESCE(SUM(${bookings.totalAmount}), 0)::int`,
+      averageOccupancy: sql<number>`
+        CASE 
+          WHEN COUNT(${bookings.id}) > 0 
+          THEN ROUND(AVG(${bookings.attendeeCount})::numeric, 1)::int
+          ELSE 0 
+        END
+      `
+    })
+    .from(conferenceRooms)
+    .leftJoin(bookings, and(
+      eq(conferenceRooms.id, bookings.roomId),
+      eq(bookings.status, "confirmed"),
+      dateFilter
+    ))
+    .groupBy(conferenceRooms.id, conferenceRooms.name, conferenceRooms.capacity)
+    .orderBy(asc(conferenceRooms.name));
+
+    return stats.map(stat => ({
+      ...stat,
+      utilizationRate: stat.totalHours > 0 ? Math.round((stat.totalHours / (24 * 7)) * 100) : 0 // Assuming weekly calculation
+    }));
+  }
+
+  async getBookingTrends(startDate: string, endDate: string): Promise<BookingTrends[]> {
+    const trends = await db.select({
+      date: bookings.startDate,
+      bookingCount: sql<number>`COUNT(*)::int`,
+      revenue: sql<number>`SUM(${bookings.totalAmount})::int`,
+      totalHours: sql<number>`
+        SUM(
+          EXTRACT(EPOCH FROM (
+            TO_TIMESTAMP(${bookings.endDate} || ' ' || ${bookings.endTime}, 'YYYY-MM-DD HH24:MI') -
+            TO_TIMESTAMP(${bookings.startDate} || ' ' || ${bookings.startTime}, 'YYYY-MM-DD HH24:MI')
+          )) / 3600
+        )::int
+      `
+    })
+    .from(bookings)
+    .where(
+      and(
+        gte(bookings.startDate, startDate),
+        lte(bookings.endDate, endDate),
+        eq(bookings.status, "confirmed")
+      )
+    )
+    .groupBy(bookings.startDate)
+    .orderBy(asc(bookings.startDate));
+
+    return trends;
+  }
+
+  async getPopularTimeSlots(): Promise<PopularTimeSlots[]> {
+    const timeSlots = await db.select({
+      hour: sql<number>`EXTRACT(HOUR FROM TO_TIME(${bookings.startTime}, 'HH24:MI'))::int`,
+      bookingCount: sql<number>`COUNT(*)::int`
+    })
+    .from(bookings)
+    .where(eq(bookings.status, "confirmed"))
+    .groupBy(sql`EXTRACT(HOUR FROM TO_TIME(${bookings.startTime}, 'HH24:MI'))`)
+    .orderBy(sql`EXTRACT(HOUR FROM TO_TIME(${bookings.startTime}, 'HH24:MI'))`);
+
+    const totalBookings = timeSlots.reduce((sum, slot) => sum + slot.bookingCount, 0);
+
+    return timeSlots.map(slot => ({
+      ...slot,
+      utilization: totalBookings > 0 ? Math.round((slot.bookingCount / totalBookings) * 100) : 0
+    }));
+  }
+
+  async getTotalRevenue(startDate?: string, endDate?: string): Promise<number> {
+    let dateFilter = sql`1=1`;
+    if (startDate && endDate) {
+      dateFilter = and(
+        gte(bookings.startDate, startDate),
+        lte(bookings.endDate, endDate)
+      );
+    }
+
+    const [result] = await db.select({
+      totalRevenue: sql<number>`COALESCE(SUM(${bookings.totalAmount}), 0)::int`
+    })
+    .from(bookings)
+    .where(
+      and(
+        eq(bookings.status, "confirmed"),
+        dateFilter
+      )
+    );
+
+    return result.totalRevenue;
+  }
+
+  async getOccupancyRate(roomId?: number, startDate?: string, endDate?: string): Promise<number> {
+    let roomFilter = sql`1=1`;
+    let dateFilter = sql`1=1`;
+    
+    if (roomId) {
+      roomFilter = eq(bookings.roomId, roomId);
+    }
+    
+    if (startDate && endDate) {
+      dateFilter = and(
+        gte(bookings.startDate, startDate),
+        lte(bookings.endDate, endDate)
+      );
+    }
+
+    const [result] = await db.select({
+      averageOccupancy: sql<number>`
+        CASE 
+          WHEN COUNT(${bookings.id}) > 0 
+          THEN ROUND(AVG(CAST(${bookings.attendeeCount} AS FLOAT) / ${conferenceRooms.capacity}) * 100, 1)
+          ELSE 0 
+        END
+      `
+    })
+    .from(bookings)
+    .leftJoin(conferenceRooms, eq(bookings.roomId, conferenceRooms.id))
+    .where(
+      and(
+        eq(bookings.status, "confirmed"),
+        roomFilter,
+        dateFilter
+      )
+    );
+
+    return result.averageOccupancy || 0;
+  }
+
+  async getUser(id: number): Promise<User | null> {
+    const [user] = await db.select()
+      .from(users)
+      .where(eq(users.id, id));
+    return user || null;
+  }
+
+  async getUserByEmail(email: string): Promise<User | null> {
+    const [user] = await db.select()
+      .from(users)
+      .where(eq(users.email, email));
+    return user || null;
+  }
+
+  async createUser(user: InsertUser): Promise<User> {
+    const [newUser] = await db.insert(users)
+      .values(user)
+      .returning();
+    return newUser;
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();

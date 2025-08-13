@@ -1,96 +1,139 @@
-import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, decimal, json, timestamp } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
+import { pgTable, text, integer, timestamp, decimal, boolean } from "drizzle-orm/pg-core";
+import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
+import { relations } from "drizzle-orm";
 
-export const destinations = pgTable("destinations", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+export const conferenceRooms = pgTable("conference_rooms", {
+  id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
   name: text("name").notNull(),
-  country: text("country").notNull(),
-  description: text("description").notNull(),
-  imageUrl: text("image_url").notNull(),
-  packageCount: integer("package_count").notNull().default(0),
-  priceFrom: integer("price_from").notNull(), // price in cents
-  featured: integer("featured").notNull().default(0), // 0 or 1 for boolean
-});
-
-export const packages = pgTable("packages", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  title: text("title").notNull(),
-  destinationId: varchar("destination_id").notNull(),
-  description: text("description").notNull(),
-  imageUrl: text("image_url").notNull(),
-  price: integer("price").notNull(), // price in cents
-  duration: integer("duration").notNull(), // days
-  maxGuests: integer("max_guests").notNull(),
-  rating: decimal("rating", { precision: 2, scale: 1 }).notNull(),
-  type: text("type").notNull(), // Beach & Resort, Adventure, Cultural, Luxury, Family
-  features: json("features").$type<string[]>().notNull(),
-  included: json("included").$type<string[]>().notNull(),
-  activities: json("activities").$type<string[]>().notNull(),
-});
-
-export const activities = pgTable("activities", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull(),
-  description: text("description").notNull(),
-  imageUrl: text("image_url").notNull(),
-  category: text("category").notNull(),
+  capacity: integer("capacity").notNull(),
+  location: text("location").notNull(),
+  description: text("description"),
+  amenities: text("amenities").array().default([]),
+  hourlyRate: integer("hourly_rate").notNull(), // Rate in cents per hour
+  imageUrl: text("image_url"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const bookings = pgTable("bookings", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  packageId: varchar("package_id").notNull(),
-  firstName: text("first_name").notNull(),
-  lastName: text("last_name").notNull(),
-  email: text("email").notNull(),
-  phone: text("phone").notNull(),
-  travelDate: text("travel_date").notNull(),
-  travelers: integer("travelers").notNull(),
+  id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
+  roomId: integer("room_id").references(() => conferenceRooms.id).notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  organizerName: text("organizer_name").notNull(),
+  organizerEmail: text("organizer_email").notNull(),
+  organizerPhone: text("organizer_phone"),
+  attendeeCount: integer("attendee_count").notNull(),
+  startDate: text("start_date").notNull(), // YYYY-MM-DD format
+  endDate: text("end_date").notNull(), // YYYY-MM-DD format
+  startTime: text("start_time").notNull(), // HH:MM format
+  endTime: text("end_time").notNull(), // HH:MM format
+  totalAmount: integer("total_amount").notNull(), // Amount in cents
+  status: text("status").default("confirmed"), // confirmed, cancelled, completed
   specialRequests: text("special_requests"),
-  status: text("status").notNull().default("pending"), // pending, confirmed, cancelled
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const bookingEquipment = pgTable("booking_equipment", {
+  id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
+  bookingId: integer("booking_id").references(() => bookings.id).notNull(),
+  equipmentName: text("equipment_name").notNull(),
+  quantity: integer("quantity").default(1),
+});
+
+export const users = pgTable("users", {
+  id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
+  username: text("username").notNull().unique(),
+  email: text("email").notNull().unique(),
+  fullName: text("full_name").notNull(),
+  role: text("role").default("user"), // user, admin
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const contacts = pgTable("contacts", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull(),
-  email: text("email").notNull(),
-  destination: text("destination"),
-  message: text("message").notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
+// Relations
+export const conferenceRoomsRelations = relations(conferenceRooms, ({ many }) => ({
+  bookings: many(bookings),
+}));
+
+export const bookingsRelations = relations(bookings, ({ one, many }) => ({
+  room: one(conferenceRooms, {
+    fields: [bookings.roomId],
+    references: [conferenceRooms.id],
+  }),
+  equipment: many(bookingEquipment),
+}));
+
+export const bookingEquipmentRelations = relations(bookingEquipment, ({ one }) => ({
+  booking: one(bookings, {
+    fields: [bookingEquipment.bookingId],
+    references: [bookings.id],
+  }),
+}));
+
+// Insert schemas
+export const insertConferenceRoomSchema = createInsertSchema(conferenceRooms).omit({ 
+  id: true, 
+  createdAt: true 
 });
 
-export const insertDestinationSchema = createInsertSchema(destinations).omit({
-  id: true,
+export const insertBookingSchema = createInsertSchema(bookings).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true 
 });
 
-export const insertPackageSchema = createInsertSchema(packages).omit({
-  id: true,
+export const insertBookingEquipmentSchema = createInsertSchema(bookingEquipment).omit({ 
+  id: true 
 });
 
-export const insertActivitySchema = createInsertSchema(activities).omit({
-  id: true,
+export const insertUserSchema = createInsertSchema(users).omit({ 
+  id: true, 
+  createdAt: true 
 });
 
-export const insertBookingSchema = createInsertSchema(bookings).omit({
-  id: true,
-  status: true,
-  createdAt: true,
-});
-
-export const insertContactSchema = createInsertSchema(contacts).omit({
-  id: true,
-  createdAt: true,
-});
-
-export type Destination = typeof destinations.$inferSelect;
-export type InsertDestination = z.infer<typeof insertDestinationSchema>;
-export type Package = typeof packages.$inferSelect;
-export type InsertPackage = z.infer<typeof insertPackageSchema>;
-export type Activity = typeof activities.$inferSelect;
-export type InsertActivity = z.infer<typeof insertActivitySchema>;
+// Types
+export type ConferenceRoom = typeof conferenceRooms.$inferSelect;
 export type Booking = typeof bookings.$inferSelect;
+export type BookingEquipment = typeof bookingEquipment.$inferSelect;
+export type User = typeof users.$inferSelect;
+
+export type InsertConferenceRoom = z.infer<typeof insertConferenceRoomSchema>;
 export type InsertBooking = z.infer<typeof insertBookingSchema>;
-export type Contact = typeof contacts.$inferSelect;
-export type InsertContact = z.infer<typeof insertContactSchema>;
+export type InsertBookingEquipment = z.infer<typeof insertBookingEquipmentSchema>;
+export type InsertUser = z.infer<typeof insertUserSchema>;
+
+// Extended types for API responses
+export type BookingWithDetails = Booking & {
+  room: ConferenceRoom;
+  equipment: BookingEquipment[];
+};
+
+export type RoomWithBookings = ConferenceRoom & {
+  bookings: Booking[];
+};
+
+// Analytics types
+export type RoomUsageStats = {
+  roomId: number;
+  roomName: string;
+  totalBookings: number;
+  totalHours: number;
+  totalRevenue: number;
+  utilizationRate: number;
+  averageOccupancy: number;
+};
+
+export type BookingTrends = {
+  date: string;
+  bookingCount: number;
+  revenue: number;
+  totalHours: number;
+};
+
+export type PopularTimeSlots = {
+  hour: number;
+  bookingCount: number;
+  utilization: number;
+};
