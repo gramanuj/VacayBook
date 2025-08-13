@@ -40,7 +40,7 @@ export default function RoomsPage() {
       const matchesSearch = room.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            room.location.toLowerCase().includes(searchTerm.toLowerCase());
       
-      const matchesCapacity = capacityFilter === "" || 
+      const matchesCapacity = capacityFilter === "" || capacityFilter === "all" || 
         (capacityFilter === "small" && room.capacity <= 6) ||
         (capacityFilter === "medium" && room.capacity > 6 && room.capacity <= 15) ||
         (capacityFilter === "large" && room.capacity > 15);
@@ -101,7 +101,7 @@ export default function RoomsPage() {
                 <SelectValue placeholder="Capacity" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Sizes</SelectItem>
+                <SelectItem value="all">All Sizes</SelectItem>
                 <SelectItem value="small">Small (≤6)</SelectItem>
                 <SelectItem value="medium">Medium (7-15)</SelectItem>
                 <SelectItem value="large">Large (16+)</SelectItem>

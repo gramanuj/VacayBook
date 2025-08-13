@@ -1,8 +1,8 @@
-# VacationHub Travel Platform
+# Conference Room Booking Mobile App
 
 ## Overview
 
-VacationHub is a modern travel booking platform built with React and Express.js that allows users to browse destinations, search vacation packages, and make bookings. The application features a responsive design with shadcn/ui components, real-time search functionality, and a comprehensive booking system for travel packages.
+A mobile-first conference room booking application built with React and Express.js that allows users to browse available conference rooms, make bookings, and view analytics. The application features 8 conference rooms with varying capacities (4-25 people), mobile-optimized interface with bottom navigation, comprehensive booking functionality, and detailed analytics dashboard.
 
 ## User Preferences
 
@@ -20,34 +20,41 @@ Preferred communication style: Simple, everyday language.
 
 ### Backend Architecture
 - **Express.js** server with TypeScript
-- **RESTful API** design with dedicated routes for destinations, packages, activities, bookings, and contacts
-- **In-memory storage** implementation with an interface-based design for easy database migration
+- **RESTful API** design with dedicated routes for conference rooms, bookings, and analytics
+- **PostgreSQL database** with full CRUD operations for rooms and bookings
 - **Form validation** using Zod schemas shared between client and server
-- **Session-based architecture** ready with connect-pg-simple for PostgreSQL sessions
+- **Analytics endpoints** for dashboard data, room statistics, and usage insights
 
 ### Data Layer
 - **Drizzle ORM** configured for PostgreSQL with type-safe database operations
+- **8 pre-seeded conference rooms** with capacities ranging from 4-25 people
+- **Sample bookings** with realistic data for testing and demonstration
 - **Shared schema definitions** using Drizzle schema with Zod validation
 - **Database migrations** managed through Drizzle Kit
-- **Neon Database** as the PostgreSQL provider
+- **Real-time data** with no mock or placeholder content
+
+### Mobile App Features
+- **Bottom navigation** with Home, Rooms, Bookings, and Analytics tabs
+- **Room browsing** with search by name/location and capacity filtering (Small ≤6, Medium 7-15, Large 16+)
+- **Detailed room pages** showing amenities, pricing, capacity, and high-quality images
+- **Booking form** with organizer details, meeting purpose, date/time selection, and cost calculation
+- **Bookings management** displaying all user bookings with status tracking
+- **Analytics dashboard** with room performance, popular times, and usage insights
+- **Mobile-optimized UI** with touch-friendly controls and responsive design
 
 ### Component Architecture
-- **Modular component design** with separate components for destinations, packages, activities, and bookings
-- **Form handling** with React Hook Form and Zod resolvers
-- **Modal system** for booking interactions
-- **Responsive design** with mobile-first approach
-- **Toast notifications** for user feedback
-
-### State Management
-- **TanStack Query** for server state with automatic caching and invalidation
-- **React Hook Form** for form state management
-- **Local component state** for UI interactions and modal states
+- **5 main pages**: HomePage, RoomsPage, RoomDetailsPage, BookingPage, BookingsPage, AnalyticsPage
+- **Mobile navigation** component with active state indicators
+- **Form handling** with React Hook Form and comprehensive validation
+- **Real-time cost calculation** based on hourly rates and duration
+- **Toast notifications** for booking confirmations and errors
 
 ### API Design
-- **RESTful endpoints** following standard HTTP conventions
-- **Filtering and search** capabilities for packages
-- **Error handling** with consistent error responses
-- **Request/response logging** for debugging and monitoring
+- **GET /api/conference-rooms** - List all available rooms with filtering
+- **GET /api/conference-rooms/:id** - Get specific room details
+- **POST /api/bookings** - Create new booking with validation
+- **GET /api/bookings** - List user bookings with room details
+- **GET /api/analytics/dashboard** - Analytics data for insights
 
 ## External Dependencies
 
